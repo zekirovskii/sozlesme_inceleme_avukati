@@ -28,6 +28,73 @@ Plan/Program:
 pip install google-generativeai python-dotenv sentence-transformers faiss-cpu numpy PyMuPDF
 """
 
+import os
+import pickle
+import faiss 
+import numpy as np
+from sentence_transformers import SentenceTransformer
+from dotenv import load_dotenv
+import google.generativeai as genai
+
+load_dotenv()
+
+api_key = os.getenv("GEMINI_API_KEY")
+genai.configure(api_key=api_key)
+
+# initialize gmeini model
+model_gemini = genai.GenerativeModel("gemini-2.5-flash")
+
+# embeddşng modeli
+embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+
+# faiss index dosyasını yükle, vektör db
+index = faiss.read_index("./data/sozlesme_ornegi.faiss")
+
+# chunklanmıs metin verisi yukle
+with open("data/sozlesme_ornegi.pkl","rb") as f:
+    chunks = pickle.load(f)
+
+# kullanıcıdan gelen soruları al
+while True:
+
+    # kullanıcıdan soru al
+    question = input("Sorunuzu giriniz (eng): ")
+
+    if question.lower() in ["quit", "q", "exit"]:
+        print("Çıkış yapılıyor")
+        break
+    
+    # kullanıcının sorualrını vektöre çevirelim
+    question_embedding = embedding_model.encode([question])
+
+    # faiss veritabanından en yakın 3 chunk aranır ve getirilir
+    k = 3 # en yakın 3 chunk
+    distances, indices = index.search(np.array(question_embedding),k)
+
+    # bulunan chunklar birleştir, context oluştur
+    retrieved_chunks = [chunks[i] for i in indices[0]]
+    context = "\n ----- \n".join(retrieved_chunks)
+
+    # llm e gönderilecek sistem prompts
+
+    prompt = f"""
+                You are a cotract lawyer AI asistant. Based on the contract context below,
+                answer the user's question clearly.
+
+                Context:
+                {context}
+
+                Question:
+                {question}
+
+                Answer:
+
+            """
+    # get gemini response
+    response = model_gemini.generate_content(prompt)
+
+    print(f"AI: {response.text.strip()}")
+
 
 """
 FAQ: Software Development Agreement
